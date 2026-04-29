@@ -12,8 +12,8 @@ The EC850LCD connects via **USB HID**, the same interface PowerPanel uses. NUT s
 - Real-time UPS status monitoring (load, battery %, runtime, voltage)
 - Automatic safe shutdown of connected devices on power loss
 - Remote monitoring via NUT's network protocol
-- Web UI via NUT Monitor, Uptime Kuma, or Grafana
-- Email / webhook notifications
+- Web UI via PeaNUT
+- Push notifications via ntfy.sh
 - SNMP export (optional)
 - Monitor multiple machines from a single UPS
 
@@ -130,11 +130,7 @@ Create a notification script at `/etc/nut/notify.sh`:
 #!/bin/bash
 # $1 = message passed by NUT
 
-# Option A: Email
-echo "UPS Alert: $1" | mail -s "UPS Alert" you@example.com
-
-# Option B: Webhook (e.g. ntfy.sh, Slack, Pushover)
-curl -d "$1" ntfy.sh/your-ups-topic
+curl -d "UPS Alert: $1" ntfy.sh/your-ups-topic
 ```
 
 Make it executable:
@@ -143,71 +139,62 @@ Make it executable:
 sudo chmod +x /etc/nut/notify.sh
 ```
 
+Install the **ntfy** app on your phone (iOS or Android) and subscribe to your chosen topic to receive push notifications instantly when UPS events occur.
+
 ---
 
-## Web Dashboard — Uptime Kuma
+## Web Dashboard — PeaNUT
 
-Uptime Kuma is a self-hosted monitoring tool with a clean UI and native NUT support. It runs well on a Raspberry Pi and lets you view UPS status and set up alerts from any browser.
+PeaNUT is a lightweight, self-hosted UPS dashboard purpose-built for NUT. It displays real-time stats like battery percentage, load, voltage, and estimated runtime.
 
 ### Install Docker (if not already installed)
 
-Uptime Kuma is easiest to run via Docker:
-
 ```bash
 curl -sSL https://get.docker.com | sh
-sudo usermod -aG docker pi
+sudo usermod -aG docker <your-username>
 # Log out and back in for the group change to take effect
 ```
 
-### Run Uptime Kuma
+### Run PeaNUT
 
 ```bash
 docker run -d \
-  --restart=always \
-  -p 3001:3001 \
-  -v uptime-kuma:/app/data \
-  --name uptime-kuma \
-  louislam/uptime-kuma:1
+  --name PeaNUT \
+  --restart unless-stopped \
+  -v /opt/peanut/config:/config \
+  -p 8080:8080 \
+  --env WEB_PORT=8080 \
+  brandawg93/peanut:latest
 ```
 
-Uptime Kuma will now be accessible in your browser at:
+PeaNUT will now be accessible in your browser at:
 
 ```
-http://<pi-ip-address>:3001
+http://<pi-ip-address>:8080
 ```
 
-### First-Time Setup
+### Connect PeaNUT to NUT
 
 1. Open the URL above in your browser
-2. Create an admin username and password when prompted
-
-### Add a NUT UPS Monitor
-
-1. Click **Add New Monitor**
-2. Set **Monitor Type** to `DNS` — then change it to **NUT (Network UPS Tools)** from the dropdown
-3. Fill in the fields:
-   - **Friendly Name**: CyberPower EC850LCD (or anything you like)
-   - **Host**: `localhost` (or the Pi's IP if accessing remotely)
+2. Click the **cog icon** to open Settings
+3. Click the **+** button to add a new NUT server
+4. Fill in the fields:
+   - **Name**: anything you like (e.g. `rpi`)
+   - **Server Address**: your Pi's local IP address (e.g. `192.168.1.175`) — do not use `localhost`, as PeaNUT runs inside Docker
    - **Port**: `3493`
-   - **UPS Name**: `cyberpower` (must match the name in your `ups.conf`)
    - **Username**: `monitor`
    - **Password**: `monitorpass` (as set in `upsd.users`)
-4. Click **Save**
+5. Click **Apply**
 
-Uptime Kuma will now poll your UPS and display its status on the dashboard.
+PeaNUT will now poll your UPS and display live stats on the dashboard.
 
-### Set Up Notifications (Optional)
+### Keep PeaNUT Running After Reboot
 
-Uptime Kuma supports a wide range of notification channels — email, Slack, Discord, Telegram, Pushover, ntfy, and more.
+The `--restart unless-stopped` flag in the Docker run command means PeaNUT will automatically restart if the Pi reboots — no extra steps needed.
 
-1. Go to **Settings → Notifications**
-2. Click **Setup Notification**
-3. Choose your preferred channel and follow the prompts
-4. Assign the notification to your UPS monitor
+### Avoiding IP Address Changes
 
-### Keep Uptime Kuma Running After Reboot
-
-The `--restart=always` flag in the Docker run command means Uptime Kuma will automatically restart if the Pi reboots — no extra steps needed.
+Since PeaNUT connects to NUT via IP address, it's recommended to assign your Pi a static IP. The easiest way is a **DHCP reservation** in your router — find the Pi in your router's client list and reserve its current IP against its MAC address.
 
 ---
 
@@ -227,6 +214,7 @@ SHUTDOWNCMD "/sbin/shutdown -h now"
 | Issue | Fix |
 |---|---|
 | `upsc` shows no data | Check USB connection; run `sudo upsdrvctl start` manually |
-| Permission denied on USB device | Add `pi` user to `nut` group: `sudo usermod -aG nut pi` |
+| Permission denied on USB device | Add your user to `nut` group: `sudo usermod -aG nut <your-username>` |
 | Services won't start | Check logs with `journalctl -u nut-server -xe` |
 | Wrong vendor/product ID | Re-run `lsusb` and update `ups.conf` accordingly |
+| PeaNUT can't connect to NUT | Ensure `LISTEN 0.0.0.0 3493` is set in `upsd.conf` and use the Pi's IP, not `localhost` |
