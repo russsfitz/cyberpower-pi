@@ -1,0 +1,11 @@
+services:
+  peanut:
+    image: brandawg93/peanut:latest
+    container_name: PeaNUT
+    restart: unless-stopped
+    volumes:
+      - /opt/peanut/config:/config
+    ports:
+      - 8080:8080
+    environment:
+      - WEB_PORT=8080
